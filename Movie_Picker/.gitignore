@@ -1,0 +1,11 @@
+# Secrets (matches .env in any subfolder)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Movie picker specific
+movie-picker/movies.db
