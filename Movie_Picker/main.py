@@ -4,6 +4,7 @@ from db import init_db, add_to_history
 from tmdb_client import get_popular_movies, get_genre_map
 from recommender import recommend
 
+
 class MoviePickerApp:
     def __init__(self, root):
         self.root = root
@@ -14,6 +15,7 @@ class MoviePickerApp:
         self.genre_map = get_genre_map()
         self.pool = get_popular_movies()
         self.current = None
+        self.shown_ids = set()  # tracks movies already suggested this session
 
         tk.Label(root, text="🎬 What Should I Watch Today?", font=("Helvetica", 16, "bold")).pack(pady=15)
 
@@ -42,26 +44,51 @@ class MoviePickerApp:
         self.suggest()
 
     def suggest(self):
-        recs = recommend(self.pool, top_n=5)
-        if not recs:
-            messagebox.showinfo("Done!", "You've rated everything in the pool — nice.")
+        # Pull a larger ranked pool so there's room to cycle through options
+        recs = recommend(self.pool, top_n=20)
+
+        # Filter out movies already shown this session
+        unseen = [m for m in recs if m["id"] not in self.shown_ids]
+
+        # If we've shown everything in the ranked pool, reset and start over
+        if not unseen:
+            self.shown_ids.clear()
+            unseen = recs
+
+        if not unseen:
+            messagebox.showinfo("Done!", "No more movies to suggest right now.")
             return
-        self.current = recs[0]
+
+        self.current = unseen[0]
+        self.shown_ids.add(self.current["id"])
+
         genres = [self.genre_map.get(g, "") for g in self.current.get("genre_ids", [])]
-        self.title_label.config(text=f'{self.current["title"]}  ({self.current.get("release_date","")[:4]})')
+        self.title_label.config(
+            text=f'{self.current["title"]}  ({self.current.get("release_date", "")[:4]})'
+        )
         self.overview_label.config(text=self.current.get("overview", ""))
-        self.genre_label.config(text=" • ".join(genres) + f'   |   TMDB: {self.current["vote_average"]}/10')
+        self.genre_label.config(
+            text=" • ".join(genres) + f'   |   TMDB: {self.current["vote_average"]}/10'
+        )
 
     def mark_watched(self):
+        if not self.current:
+            return
         add_to_history(self.current["id"], self.current["title"], self.current.get("genre_ids", []))
         messagebox.showinfo("Logged", "Marked as watched. Rate it below once you're done!")
 
     def rate(self, stars):
         if not self.current:
             return
-        add_to_history(self.current["id"], self.current["title"], self.current.get("genre_ids", []), user_rating=stars)
+        add_to_history(
+            self.current["id"],
+            self.current["title"],
+            self.current.get("genre_ids", []),
+            user_rating=stars,
+        )
         messagebox.showinfo("Thanks!", f"Rated {stars}⭐ — I'll use this for future picks.")
         self.suggest()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
